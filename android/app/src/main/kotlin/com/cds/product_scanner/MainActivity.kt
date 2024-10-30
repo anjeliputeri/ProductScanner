@@ -1,4 +1,4 @@
-package com.example.fic12_flutter_starter
+package com.cds.product_scanner
 
 import io.flutter.embedding.android.FlutterActivity
 

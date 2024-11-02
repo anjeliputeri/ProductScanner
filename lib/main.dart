@@ -1,102 +1,84 @@
-// import 'package:flutter/material.dart';
-// import 'package:google_fonts/google_fonts.dart';
+import 'dart:io';
 
-// import 'core/constants/colors.dart';
-// import 'core/router/app_router.dart';
-
-// void main() {
-//   runApp(const MyApp());
-// }
-
-// class MyApp extends StatelessWidget {
-//   const MyApp({super.key});
-
-//   @override
-//   Widget build(BuildContext context) {
-//     final appRouter = AppRouter();
-//     final router = appRouter.router;
-//     return MaterialApp.router(
-//       title: 'Flutter Demo',
-//       theme: ThemeData(
-//         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary),
-//         textTheme: GoogleFonts.dmSansTextTheme(
-//           Theme.of(context).textTheme,
-//         ),
-//         appBarTheme: AppBarTheme(
-//           color: AppColors.white,
-//           titleTextStyle: GoogleFonts.quicksand(
-//             color: AppColors.primary,
-//             fontSize: 18.0,
-//             fontWeight: FontWeight.w700,
-//           ),
-//           iconTheme: const IconThemeData(
-//             color: AppColors.black,
-//           ),
-//           centerTitle: true,
-//           shape: Border(
-//             bottom: BorderSide(
-//               color: AppColors.black.withOpacity(0.05),
-//             ),
-//           ),
-//         ),
-//       ),
-//       routerDelegate: router.routerDelegate,
-//       routeInformationParser: router.routeInformationParser,
-//       routeInformationProvider: router.routeInformationProvider,
-//     );
-//   }
-// }
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:tflite_v2/tflite_v2.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  runApp(const MyApp());
-}
+void main() => runApp(DetectApp());
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
-
+class DetectApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: TestFirebase(),
+      title: 'Produk Detector',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: ProductDetectionScreen(),
     );
   }
 }
 
-class TestFirebase extends StatefulWidget {
+class ProductDetectionScreen extends StatefulWidget {
   @override
-  _TestFirebaseState createState() => _TestFirebaseState();
+  _ProductDetectionScreenState createState() => _ProductDetectionScreenState();
 }
 
-class _TestFirebaseState extends State<TestFirebase> {
-  String _status = 'Checking connection...';
+class _ProductDetectionScreenState extends State<ProductDetectionScreen> {
+  final ImagePicker _picker = ImagePicker();
+  List<XFile>? _images = []; // Untuk menyimpan gambar yang di-capture
+  String? _selectedModel;
+  List _results = [];
 
   @override
   void initState() {
     super.initState();
-    _checkConnection();
   }
 
-  Future<void> _checkConnection() async {
-    try {
-      // Test write to Firestore
-      await FirebaseFirestore.instance
-          .collection('test')
-          .add({
-            'timestamp': FieldValue.serverTimestamp(),
-            'test': 'Hello Firebase!'
-          });
-      
+  @override
+  void dispose() {
+    Tflite.close();
+    super.dispose();
+  }
+
+  // Fungsi untuk mengambil gambar dari galeri atau kamera
+  Future<void> _captureImage() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.camera);
+    if (image != null) {
       setState(() {
-        _status = 'Connected to Firebase successfully! ✅';
+        _images!.add(image);
       });
-    } catch (e) {
+    }
+  }
+
+  // Fungsi untuk memuat model
+  Future<void> _loadModel(String model) async {
+    await Tflite.loadModel(
+      model: 'assets/models/$model.tflite',
+      labels: 'assets/models/$model.txt',
+      numThreads: 2,
+    );
+    print('Model loaded');
+  }
+
+  // Fungsi untuk melakukan deteksi produk
+  Future<void> _detectProducts() async {
+    if (_selectedModel == null || _images!.isEmpty) return;
+
+    await _loadModel(_selectedModel!);
+    _results.clear();
+
+    print('Detecting products...');
+
+    for (var image in _images!) {
+      var recognitions = await Tflite.detectObjectOnImage(
+        path: image.path,
+        threshold: 0.5,        // Threshold hasil deteksi
+        numResultsPerClass: 5,
+      );
+      print("------------result-----------");
+      print(recognitions);
+
       setState(() {
-        _status = 'Connection failed: ${e.toString()} ❌';
+        _results.addAll(recognitions!);
       });
     }
   }
@@ -105,27 +87,57 @@ class _TestFirebaseState extends State<TestFirebase> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Firebase Connection Test'),
+        title: Text('Produk Detection'),
       ),
-      body: Center(
-        child: Padding(
-          padding: EdgeInsets.all(20),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                _status,
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16),
-              ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _checkConnection,
-                child: Text('Test Again'),
-              ),
-            ],
+      body: Column(
+        children: [
+          DropdownButton<String>(
+            hint: Text('Pilih Model'),
+            value: _selectedModel,
+            items: ['model-1', 'model-2', 'model-3', 'model-4', 'model-5'].map((model) {
+              return DropdownMenuItem(
+                value: model,
+                child: Text(model),
+              );
+            }).toList(),
+            onChanged: (value) {
+              setState(() {
+                _selectedModel = value;
+              });
+            },
           ),
-        ),
+          ElevatedButton(
+            onPressed: _captureImage,
+            child: Text('Capture Image'),
+          ),
+          Expanded(
+            child: _images!.isNotEmpty
+                ? ListView.builder(
+                    itemCount: _images!.length,
+                    itemBuilder: (context, index) {
+                      return Image.file(File(_images![index].path));
+                    },
+                  )
+                : Center(child: Text('No images captured')),
+          ),
+          ElevatedButton(
+            onPressed: _detectProducts,
+            child: Text('Submit & Detect'),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _results.length,
+              itemBuilder: (context, index) {
+                final result = _results[index];
+                return ListTile(
+                  title: Text(result['detectedClass']),
+                  subtitle: Text(
+                      'Confidence: ${result['confidence']}'),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

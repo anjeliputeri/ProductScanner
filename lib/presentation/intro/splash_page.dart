@@ -10,10 +10,10 @@ class SplashPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Future.delayed(
-      const Duration(seconds: 3),
-      () => context.goNamed(
-        RouteConstants.login,
-        // pathParameters: PathParameters().toMap(),
+      const Duration(seconds: 1),
+          () => context.goNamed(
+        RouteConstants.root,
+        pathParameters: PathParameters().toMap(),
       ),
     );
 

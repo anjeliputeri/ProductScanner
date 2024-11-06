@@ -155,10 +155,10 @@ class _DetectionPageState extends State<DetectionPage> {
               const SizedBox(height: 20),
               _buildDetectButton(),
               const SizedBox(height: 20),
-              _buildSaveButton(),
-              const SizedBox(height: 20),
               _buildDetectionResults(),
-              const SizedBox(height: 50),
+              const SizedBox(height: 20),
+              _buildSaveButton(),
+              const SizedBox(height: 100),
             ],
           ),
         ),
@@ -246,9 +246,7 @@ class _DetectionPageState extends State<DetectionPage> {
                 borderRadius: BorderRadius.circular(12),
                 child: ImageWithBoundingBoxes(
                   imageFile: File(_images![index].path),
-                  results: _results,
-                  width: 100, // Card width
-                  height: 100, // Card height
+                  results: _results, // Card height
                 ),
               ),
             ),

@@ -10,7 +10,7 @@ class ImageWithBoundingBoxes extends StatelessWidget {
   const ImageWithBoundingBoxes({
     Key? key,
     required this.imageFile,
-    required this.results, required int width, required int height,
+    required this.results,
   }) : super(key: key);
 
   @override

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 class ImageWithBoundingBoxes extends StatelessWidget {
@@ -9,7 +10,7 @@ class ImageWithBoundingBoxes extends StatelessWidget {
   const ImageWithBoundingBoxes({
     Key? key,
     required this.imageFile,
-    required this.results,
+    required this.results, required int width, required int height,
   }) : super(key: key);
 
   @override
@@ -20,27 +21,23 @@ class ImageWithBoundingBoxes extends StatelessWidget {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-
         final imageInfo = snapshot.data!;
         final imageWidth = imageInfo.image.width.toDouble();
         final imageHeight = imageInfo.image.height.toDouble();
-
         return Stack(
           children: [
             Image.file(imageFile),
             ...results.map((result) {
               final rect = result['rect'];
-              
+
               // Hitung koordinat berdasarkan ukuran gambar asli
               final x = rect['x'] * imageWidth;
               final y = rect['y'] * imageHeight;
               final width = rect['w'] * imageWidth;
               final height = rect['h'] * imageHeight;
-
               // Hitung skala gambar pada layar
               final screenWidth = MediaQuery.of(context).size.width;
               final scaleFactor = screenWidth / imageWidth;
-
               return Positioned(
                 left: x * scaleFactor,
                 top: y * scaleFactor,
@@ -58,7 +55,6 @@ class ImageWithBoundingBoxes extends StatelessWidget {
       },
     );
   }
-
   Future<ImageInfo> _getImageInfo() async {
     final completer = Completer<ImageInfo>();
     final image = FileImage(imageFile);

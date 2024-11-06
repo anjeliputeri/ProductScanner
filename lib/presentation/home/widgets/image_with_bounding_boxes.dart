@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'dart:io';
-
 import 'package:flutter/material.dart';
 
 class ImageWithBoundingBoxes extends StatelessWidget {
@@ -14,32 +14,59 @@ class ImageWithBoundingBoxes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Image.file(imageFile),
-        ...results.map((result) {
-          final rect = result['rect'];
-          final imageWidth = MediaQuery.of(context).size.width;
-          final imageHeight = imageWidth * (imageFile.lengthSync() / (imageFile.lengthSync()));
+    return FutureBuilder<ImageInfo>(
+      future: _getImageInfo(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-          final x = rect['x'] * imageWidth;
-          final y = rect['y'] * imageHeight;
-          final width = rect['w'] * imageWidth;
-          final height = rect['h'] * imageHeight;
+        final imageInfo = snapshot.data!;
+        final imageWidth = imageInfo.image.width.toDouble();
+        final imageHeight = imageInfo.image.height.toDouble();
 
-          return Positioned(
-            left: x,
-            top: y,
-            child: Container(
-              width: width,
-              height: height,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.red, width: 2),
-              ),
-            ),
-          );
-        }).toList(),
-      ],
+        return Stack(
+          children: [
+            Image.file(imageFile),
+            ...results.map((result) {
+              final rect = result['rect'];
+              
+              // Hitung koordinat berdasarkan ukuran gambar asli
+              final x = rect['x'] * imageWidth;
+              final y = rect['y'] * imageHeight;
+              final width = rect['w'] * imageWidth;
+              final height = rect['h'] * imageHeight;
+
+              // Hitung skala gambar pada layar
+              final screenWidth = MediaQuery.of(context).size.width;
+              final scaleFactor = screenWidth / imageWidth;
+
+              return Positioned(
+                left: x * scaleFactor,
+                top: y * scaleFactor,
+                child: Container(
+                  width: width * scaleFactor,
+                  height: height * scaleFactor,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.red, width: 2),
+                  ),
+                ),
+              );
+            }).toList(),
+          ],
+        );
+      },
     );
+  }
+
+  Future<ImageInfo> _getImageInfo() async {
+    final completer = Completer<ImageInfo>();
+    final image = FileImage(imageFile);
+    image.resolve(const ImageConfiguration()).addListener(
+      ImageStreamListener((ImageInfo info, bool _) {
+        completer.complete(info);
+      }),
+    );
+    return completer.future;
   }
 }

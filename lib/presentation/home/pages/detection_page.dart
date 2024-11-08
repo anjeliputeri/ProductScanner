@@ -95,6 +95,8 @@ class _DetectionPageState extends State<DetectionPage> {
       );
 
       if (recognitions != null) {
+        print("-----result----");
+        print(recognitions);
         setState(() {
           _results.addAll(recognitions);
         });
@@ -110,7 +112,7 @@ class _DetectionPageState extends State<DetectionPage> {
       final detectedItems = _results.map((result) {
         return {
           'productName': result['detectedClass'],
-          'confidence': result['confidence'],
+          'confidence': result['confidenceInClass'],
           'availability': 'Available',
         };
       }).toList();
@@ -228,34 +230,36 @@ class _DetectionPageState extends State<DetectionPage> {
   }
 
   Widget _buildImagePreview() {
-    return _images!.isNotEmpty
-        ? SizedBox(
-      height: 300, // Adjust height based on desired card height
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: _images!.length,
-        itemBuilder: (context, index) {
-          return Padding(
-            padding: const EdgeInsets.only(right: 10.0),
-            child: Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: ImageWithBoundingBoxes(
-                  imageFile: File(_images![index].path),
-                  results: _results, // Card height
+  return _images!.isNotEmpty
+      ? Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.6, // Set a max height
+          ),
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: _images!.length,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: const EdgeInsets.only(right: 10.0),
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: ImageWithBoundingBoxes(
+                      imageFile: File(_images![index].path),
+                      results: _results,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          );
-        },
-      ),
-    )
-        : Center(child: Text("No images selected"));
-  }
+              );
+            },
+          ),
+        )
+      : Center(child: Text("No images selected"));
+}
 
   Widget _buildDetectButton() {
     return ElevatedButton(
@@ -287,7 +291,7 @@ class _DetectionPageState extends State<DetectionPage> {
             child: ListTile(
               title: Text(result['detectedClass'] ?? 'Unknown'),
               subtitle: Text(
-                'Confidence: ${(result['confidence'] != null ? (result['confidence'] * 100).toStringAsFixed(2) : '0.00')}%',
+                'Confidence: ${(result['confidenceInClass'] != null ? (result['confidenceInClass'] * 100).toStringAsFixed(2) : '0.00')}%',
               ),
             ),
           );

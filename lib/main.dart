@@ -9,9 +9,16 @@ import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform, // Only if needed for multi-projects
-  );
+  try {
+    await Firebase.initializeApp(
+      name: 'product-scanner-cbd65',
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print("Koneksi ke Firebase berhasil.");
+  } catch (e) {
+    print("Gagal terhubung ke Firebase: $e");
+  }
+
   runApp(MyApp());
 }
 

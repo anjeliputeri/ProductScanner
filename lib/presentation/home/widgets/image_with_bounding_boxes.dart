@@ -3,13 +3,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 class ImagesWithBoundingBoxes extends StatelessWidget {
-  final List<File> imageFiles; // Daftar gambar yang ingin ditampilkan
-  final List<List<dynamic>> allResults; // List hasil deteksi untuk setiap gambar
+  final List<File> imageFiles;
+  final Map<String, List<dynamic>> resultsPerImage;
 
   const ImagesWithBoundingBoxes({
     Key? key,
     required this.imageFiles,
-    required this.allResults,
+    required this.resultsPerImage,
   }) : super(key: key);
 
   @override
@@ -17,9 +17,11 @@ class ImagesWithBoundingBoxes extends StatelessWidget {
     return ListView.builder(
       itemCount: imageFiles.length,
       itemBuilder: (context, index) {
+        final currentImage = imageFiles[index];
         return ImageWithBoundingBoxes(
-          imageFile: imageFiles[index],
-          results: allResults[index],
+          imageFile: currentImage,
+          // Mengambil hasil deteksi yang sesuai dengan path gambar
+          results: resultsPerImage[currentImage.path] ?? [],
         );
       },
     );
@@ -38,70 +40,89 @@ class ImageWithBoundingBoxes extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<ImageInfo>(
-      future: _getImageInfo(),
+    return FutureBuilder<Size>(
+      future: _getImageSize(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final imageInfo = snapshot.data!;
-        final imageWidth = imageInfo.image.width.toDouble();
-        final imageHeight = imageInfo.image.height.toDouble();
+        final imageSize = snapshot.data!;
+        final imageWidth = imageSize.width;
+        final imageHeight = imageSize.height;
+
+        // Dapatkan ukuran layar dan hitung faktor skala
+        final screenWidth = MediaQuery.of(context).size.width;
+        final scaleFactor = screenWidth / imageWidth;
 
         return Container(
-          margin: const EdgeInsets.symmetric(vertical: 10), // memberi jarak antar gambar
+          margin: const EdgeInsets.symmetric(vertical: 10),
           child: Stack(
+            clipBehavior: Clip.none, // Mencegah pemotongan bounding box
             children: [
-              Image.file(imageFile),
-              ...results.map((result) {
-                final rect = result['rect'];
+              Image.file(
+                imageFile,
+                width: screenWidth,
+                fit: BoxFit.fitWidth,
+              ),
+              if (results.isNotEmpty) // Hanya tampilkan bounding box jika ada hasil
+                ...results.map((result) {
+                  final rect = result['rect'];
+                  if (rect == null) return const SizedBox(); // Skip jika tidak ada rect
 
-                // Hitung koordinat berdasarkan ukuran gambar asli
-                final x = rect['x'] * imageWidth;
-                final y = rect['y'] * imageHeight;
-                final width = rect['w'] * imageWidth;
-                final height = rect['h'] * imageHeight;
+                  // Hitung koordinat dengan skala yang benar
+                  final x = rect['x'] * imageWidth * scaleFactor;
+                  final y = rect['y'] * imageHeight * scaleFactor;
+                  final width = rect['w'] * imageWidth * scaleFactor;
+                  final height = rect['h'] * imageHeight * scaleFactor;
 
-                // Hitung skala gambar pada layar
-                final screenWidth = MediaQuery.of(context).size.width;
-                final scaleFactor = screenWidth / imageWidth;
+                  final confidence = (result['confidenceInClass'] ?? 0.0) * 100;
+                  final label = result['detectedClass'] ?? 'Unknown';
 
-                final confidence = (result['confidenceInClass'] ?? 0) * 100;
-                final label = result['detectedClass'] ?? 'Unknown';
+                  // Tentukan apakah label harus dipotong
+                  final displayLabel = label.length > 6 
+                      ? '${label.substring(0, 6)}...' 
+                      : label;
 
-                return Positioned(
-                  left: x * scaleFactor,
-                  top: y * scaleFactor,
-                  child: Container(
-                    width: width * scaleFactor,
-                    height: height * scaleFactor,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.red, width: 2),
-                    ),
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          child: Container(
-                            color: Colors.red,
-                            padding: const EdgeInsets.all(4),
-                            child: Text(
-                              '${label.toString().substring(0, 6)}: ${confidence.toStringAsFixed(2)}%',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 10,
+                  return Positioned(
+                    left: x,
+                    top: y,
+                    child: Container(
+                      width: width,
+                      height: height,
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: Colors.red,
+                          width: 2,
+                        ),
+                      ),
+                      child: Stack(
+                        children: [
+                          // Label container
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            child: Container(
+                              color: Colors.red.withOpacity(0.7),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 2,
+                              ),
+                              child: Text(
+                                '$displayLabel: ${confidence.toStringAsFixed(1)}%',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 10,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              }).toList(),
+                  );
+                }).toList(),
             ],
           ),
         );
@@ -109,14 +130,23 @@ class ImageWithBoundingBoxes extends StatelessWidget {
     );
   }
 
-  Future<ImageInfo> _getImageInfo() async {
-    final completer = Completer<ImageInfo>();
+  Future<Size> _getImageSize() async {
+    final completer = Completer<Size>();
     final image = FileImage(imageFile);
-    image.resolve(const ImageConfiguration()).addListener(
-      ImageStreamListener((ImageInfo info, bool _) {
-        completer.complete(info);
-      }),
-    );
+    
+    ImageStreamListener? listener;
+    listener = ImageStreamListener((ImageInfo info, bool _) {
+      final size = Size(
+        info.image.width.toDouble(),
+        info.image.height.toDouble(),
+      );
+      completer.complete(size);
+      image.evict(); // Bersihkan cache gambar
+    });
+
+    final stream = image.resolve(const ImageConfiguration());
+    stream.addListener(listener);
+    
     return completer.future;
   }
 }

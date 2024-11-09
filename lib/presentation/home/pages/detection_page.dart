@@ -22,7 +22,7 @@ class _DetectionPageState extends State<DetectionPage> {
   final ImagePicker _picker = ImagePicker();
   List<XFile>? _images = [];
   String? _selectedModel;
-  List _results = [];
+  Map<String, List<dynamic>> _resultsPerImage = {};
 
   @override
   void initState() {
@@ -85,7 +85,7 @@ class _DetectionPageState extends State<DetectionPage> {
     if (_selectedModel == null || _images!.isEmpty) return;
 
     await _loadModel(_selectedModel!);
-    _results.clear();
+    _resultsPerImage.clear();
 
     for (var image in _images!) {
       var recognitions = await Tflite.detectObjectOnImage(
@@ -98,7 +98,7 @@ class _DetectionPageState extends State<DetectionPage> {
         print("-----result----");
         print(recognitions);
         setState(() {
-          _results.addAll(recognitions);
+           _resultsPerImage[image.path] = recognitions;
         });
       }
     }
@@ -109,17 +109,19 @@ class _DetectionPageState extends State<DetectionPage> {
       final historyDoc = FirebaseFirestore.instance.collection('history').doc();
       final timestamp = DateTime.now();
 
-      final detectedItems = _results.map((result) {
-        return {
-          'productName': result['detectedClass'],
-          'confidence': result['confidenceInClass'],
-          'availability': 'Available',
-        };
+      final allDetectedItems = _resultsPerImage.values.expand((results) {
+        return results.map((result) {
+          return {
+            'productName': result['detectedClass'],
+            'confidence': result['confidenceInClass'],
+            'availability': 'Available',
+          };
+        });
       }).toList();
 
       await historyDoc.set({
         'timestamp': timestamp,
-        'detectedItems': detectedItems,
+        'detectedItems': allDetectedItems,
       });
 
       print("Data saved to Firestore successfully with availability status!");
@@ -127,7 +129,7 @@ class _DetectionPageState extends State<DetectionPage> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ResultPage(results: detectedItems), // Pass results to ResultPage
+          builder: (context) => ResultPage(results: allDetectedItems), // Pass results to ResultPage
         ),
       );
     } catch (e) {
@@ -230,36 +232,38 @@ class _DetectionPageState extends State<DetectionPage> {
   }
 
   Widget _buildImagePreview() {
-  return _images!.isNotEmpty
-      ? Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.6, // Set a max height
-          ),
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: _images!.length,
-            itemBuilder: (context, index) {
-              return Padding(
-                padding: const EdgeInsets.only(right: 10.0),
-                child: Card(
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: ImageWithBoundingBoxes(
-                      imageFile: File(_images![index].path),
-                      results: _results,
+    return _images!.isNotEmpty
+        ? Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.6,
+            ),
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _images!.length,
+              itemBuilder: (context, index) {
+                final imagePath = _images![index].path;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10.0),
+                  child: Card(
+                    elevation: 4,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: ImageWithBoundingBoxes(
+                        imageFile: File(imagePath),
+                        // Hanya memberikan hasil deteksi yang sesuai dengan gambar ini
+                        results: _resultsPerImage[imagePath] ?? [],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          ),
-        )
-      : Center(child: Text("No images selected"));
-}
+                );
+              },
+            ),
+          )
+        : Center(child: Text("No images selected"));
+  }
 
   Widget _buildDetectButton() {
     return ElevatedButton(
@@ -279,33 +283,52 @@ class _DetectionPageState extends State<DetectionPage> {
   }
 
   Widget _buildDetectionResults() {
-    return _results.isNotEmpty
+    // Menampilkan hasil deteksi untuk semua gambar
+    return _resultsPerImage.isNotEmpty
         ? Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 10),
-        ..._results.map((result) {
-          return Card(
-            elevation: 3,
-            margin: const EdgeInsets.symmetric(vertical: 5),
-            child: ListTile(
-              title: Text(result['detectedClass'] ?? 'Unknown'),
-              subtitle: Text(
-                'Confidence: ${(result['confidenceInClass'] != null ? (result['confidenceInClass'] * 100).toStringAsFixed(2) : '0.00')}%',
-              ),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 10),
+              ..._resultsPerImage.entries.expand((entry) {
+                final imageIndex = _images!.indexWhere((img) => img.path == entry.key);
+                return [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 5),
+                    child: Text(
+                      'Image ${imageIndex + 1} Results:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                  ...entry.value.map((result) {
+                    return Card(
+                      elevation: 3,
+                      margin: const EdgeInsets.symmetric(vertical: 5),
+                      child: ListTile(
+                        title: Text(result['detectedClass'] ?? 'Unknown'),
+                        subtitle: Text(
+                          'Confidence: ${(result['confidenceInClass'] != null ? (result['confidenceInClass'] * 100).toStringAsFixed(2) : '0.00')}%',
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ];
+              }).toList(),
+            ],
+          )
+        : Center(
+            child: Text(
+              "No results detected",
+              style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
           );
-        }).toList(),
-      ],
-    )
-        : Center(child: Text("No results detected", style: TextStyle(
-        fontSize: 14,
-        color: Colors.grey)));
   }
 
   Widget _buildSaveButton() {
     return ElevatedButton(
-      onPressed: _results.isNotEmpty ? _saveToFirestore : null, // Tombol hanya aktif jika ada hasil deteksi
+      onPressed: _resultsPerImage.isNotEmpty ? _saveToFirestore : null, // Tombol hanya aktif jika ada hasil deteksi
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.white,
         padding: EdgeInsets.symmetric(vertical: 15),
@@ -319,7 +342,7 @@ class _DetectionPageState extends State<DetectionPage> {
       ),
       child: Text(
         'Save Results',
-        style: TextStyle(color: _results.isNotEmpty ? AppColors.primary : Colors.grey), // Mengubah warna teks jika tombol dinonaktifkan
+        style: TextStyle(color: _resultsPerImage.isNotEmpty ? AppColors.primary : Colors.grey), // Mengubah warna teks jika tombol dinonaktifkan
       ),
     );
   }

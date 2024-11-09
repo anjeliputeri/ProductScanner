@@ -8,6 +8,7 @@ import '../../../core/constants/colors.dart';
 import '../../../core/assets/assets.gen.dart';
 import 'detection_page.dart';
 import 'detail_page.dart';
+import 'products_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -63,11 +64,24 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('I-EPAPRO', style: TextStyle(color: Colors.white)),
+        title: Text('Product Scanner', style: TextStyle(color: Colors.white)),
         backgroundColor: AppColors.primary,
         iconTheme: IconThemeData(
           color: Colors.white,
         ),
+        actions: [
+          IconButton(
+              onPressed: (){
+                Navigator.push (
+                  context,
+                  MaterialPageRoute(builder: (context) => ProductsPage()),
+                );
+              },
+              icon: Icon(Icons.file_open_rounded,
+              color: Colors.white
+              ),
+          )
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.only(top: 16.0),
@@ -123,7 +137,6 @@ class _HomePageState extends State<HomePage> {
                             ],
                           ),
                           onTap: () {
-                            // Navigate to DetailPage with the detected items
                             Navigator.push(
                               context,
                               MaterialPageRoute(

@@ -23,6 +23,8 @@ class _DetectionPageState extends State<DetectionPage> {
   List<XFile>? _images = [];
   String? _selectedModel;
   Map<String, List<dynamic>> _resultsPerImage = {};
+  bool _hasDetected = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -84,23 +86,34 @@ class _DetectionPageState extends State<DetectionPage> {
   Future<void> _detectProducts() async {
     if (_selectedModel == null || _images!.isEmpty) return;
 
-    await _loadModel(_selectedModel!);
-    _resultsPerImage.clear();
+    setState(() {
+      _isLoading = true;
+    });
 
-    for (var image in _images!) {
-      var recognitions = await Tflite.detectObjectOnImage(
-        path: image.path,
-        threshold: 0.5,
-        numResultsPerClass: 5,
-      );
+    try {
+      await _loadModel(_selectedModel!);
+      _resultsPerImage.clear();
 
-      if (recognitions != null) {
-        print("-----result----");
-        print(recognitions);
-        setState(() {
-           _resultsPerImage[image.path] = recognitions;
-        });
+      for (var image in _images!) {
+        var recognitions = await Tflite.detectObjectOnImage(
+          path: image.path,
+          threshold: 0.5,
+          numResultsPerClass: 5,
+        );
+
+        if (recognitions != null) {
+          print("-----result----");
+          print(recognitions);
+          setState(() {
+            _resultsPerImage[image.path] = recognitions;
+            _hasDetected = true;
+          });
+        }
       }
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -109,15 +122,26 @@ class _DetectionPageState extends State<DetectionPage> {
       final historyDoc = FirebaseFirestore.instance.collection('history').doc();
       final timestamp = DateTime.now();
 
-      final allDetectedItems = _resultsPerImage.values.expand((results) {
-        return results.map((result) {
-          return {
-            'productName': result['detectedClass'],
-            'confidence': result['confidenceInClass'],
-            'availability': 'Available',
-          };
-        });
-      }).toList();
+      final Map<String, Map<String, dynamic>> bestResults = {};
+
+      _resultsPerImage.values.forEach((results) {
+        for (var result in results) {
+          final String productName = result['detectedClass'].toString();
+          final double confidence = (result['confidenceInClass'] as num).toDouble();
+
+          if (!bestResults.containsKey(productName) ||
+              confidence > (bestResults[productName]!['confidence'] as double)) {
+            bestResults[productName] = {
+              'productName': productName,
+              'confidence': confidence,
+              'availability': 'Available',
+            };
+          }
+        }
+      });
+
+      final List<Map<String, dynamic>> allDetectedItems =
+      bestResults.values.map((item) => Map<String, dynamic>.from(item)).toList();
 
       await historyDoc.set({
         'timestamp': timestamp,
@@ -129,7 +153,7 @@ class _DetectionPageState extends State<DetectionPage> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => ResultPage(results: allDetectedItems), // Pass results to ResultPage
+          builder: (context) => ResultPage(results: allDetectedItems),
         ),
       );
     } catch (e) {
@@ -139,45 +163,83 @@ class _DetectionPageState extends State<DetectionPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Product Detection', style: TextStyle(color: Colors.white)),
-        backgroundColor: AppColors.primary,
-        iconTheme: IconThemeData(
-          color: Colors.white, // Ubah warna ikon menjadi putih
-        ),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildImagePreview(),
-              const SizedBox(height: 20),
-              _buildModelDropdown(),
-              const SizedBox(height: 20),
-              _buildDetectButton(),
-              const SizedBox(height: 20),
-              _buildDetectionResults(),
-              const SizedBox(height: 20),
-              _buildSaveButton(),
-              const SizedBox(height: 100),
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: Text('Product Detection', style: TextStyle(color: Colors.white)),
+            backgroundColor: AppColors.primary,
+            iconTheme: IconThemeData(
+              color: Colors.white,
+            ),
+            actions: [
+              if (_hasDetected)
+                IconButton(
+                  icon: Icon(Icons.refresh),
+                  color: Colors.white,
+                  onPressed: () {
+                    setState(() {
+                      _images = [XFile(widget.imageFile.path)];
+                      _resultsPerImage.clear();
+                      _hasDetected = false;
+                      _selectedModel = null;
+                    });
+                  },
+                ),
             ],
           ),
+          body: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildImagePreview(),
+                  const SizedBox(height: 20),
+                  _buildModelDropdown(),
+                  const SizedBox(height: 20),
+                  _buildDetectButton(),
+                  const SizedBox(height: 20),
+                  _buildDetectionResults(),
+                  const SizedBox(height: 20),
+                  _buildSaveButton(),
+                  const SizedBox(height: 100),
+                ],
+              ),
+            ),
+          ),
+          floatingActionButton: FloatingActionButton(
+            onPressed: _hasDetected ? null : _pickImageSource,
+            backgroundColor: _hasDetected ? Colors.grey : AppColors.primary,
+            child: Image.asset(
+              Assets.images.products.scanner.path,
+              width: 30,
+              height: 30,
+              color: _hasDetected ? Colors.white.withOpacity(0.5) : null,
+            ),
+            shape: CircleBorder(),
+          ),
+          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _pickImageSource,
-        backgroundColor: AppColors.primary,
-        child: Image.asset(
-          Assets.images.products.scanner.path,
-          width: 30,
-          height: 30,
-        ),
-        shape: CircleBorder(),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+        if (_isLoading)
+          Container(
+            color: Colors.black.withOpacity(0.5),
+            child: Center(
+              child: Container(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(
+                      color: AppColors.primary,
+                    ),
+                    SizedBox(height: 20),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -185,22 +247,22 @@ class _DetectionPageState extends State<DetectionPage> {
     return DropdownButtonFormField<String>(
       decoration: InputDecoration(
         labelText: 'Select Model',
-        labelStyle: TextStyle(color: Colors.black87), // Warna label
+        labelStyle: TextStyle(color: Colors.black87),
         contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 15),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primary, width: 2), // Border warna biru
+          borderSide: BorderSide(color: AppColors.primary, width: 2),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primary, width: 2), // Border fokus tetap warna biru
+          borderSide: BorderSide(color: AppColors.primary, width: 2),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primary, width: 2), // Border ketika tidak fokus tetap warna biru
+          borderSide: BorderSide(color: AppColors.primary, width: 2),
         ),
         filled: true,
-        fillColor: Colors.white, // Latar belakang dropdown
+        fillColor: Colors.white,
       ),
       value: _selectedModel,
       items: ['model-1', 'model-2', 'model-3', 'model-4', 'model-5']
@@ -223,7 +285,7 @@ class _DetectionPageState extends State<DetectionPage> {
         });
       },
       icon: Icon(
-        Icons.arrow_drop_down, // Ikon dropdown
+        Icons.arrow_drop_down,
         color: AppColors.primary,
       ),
       iconSize: 30,
@@ -253,7 +315,6 @@ class _DetectionPageState extends State<DetectionPage> {
                       borderRadius: BorderRadius.circular(12),
                       child: ImageWithBoundingBoxes(
                         imageFile: File(imagePath),
-                        // Hanya memberikan hasil deteksi yang sesuai dengan gambar ini
                         results: _resultsPerImage[imagePath] ?? [],
                       ),
                     ),
@@ -266,69 +327,89 @@ class _DetectionPageState extends State<DetectionPage> {
   }
 
   Widget _buildDetectButton() {
+    bool isEnabled = _selectedModel != null && !_hasDetected;
+
     return ElevatedButton(
-      onPressed: _detectProducts,
+      onPressed: isEnabled ? _detectProducts : null,
       style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.primary,
+        backgroundColor: isEnabled ? AppColors.primary : Colors.grey,
         padding: EdgeInsets.symmetric(vertical: 15),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8), // Adjust this value to make the corners less rounded
+          borderRadius: BorderRadius.circular(8),
         ),
       ),
-      child: Text('Detect',
-          style: TextStyle(
-              fontSize: 14,
-              color: Colors.white)),
+      child: Text(
+        'Detect',
+        style: TextStyle(
+          fontSize: 14,
+          color: Colors.white,
+        ),
+      ),
     );
   }
 
   Widget _buildDetectionResults() {
-    // Menampilkan hasil deteksi untuk semua gambar
-    return _resultsPerImage.isNotEmpty
-        ? Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 10),
-              ..._resultsPerImage.entries.expand((entry) {
-                final imageIndex = _images!.indexWhere((img) => img.path == entry.key);
-                return [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10, bottom: 5),
-                    child: Text(
-                      'Image ${imageIndex + 1} Results:',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                  ...entry.value.map((result) {
-                    return Card(
-                      elevation: 3,
-                      margin: const EdgeInsets.symmetric(vertical: 5),
-                      child: ListTile(
-                        title: Text(result['detectedClass'] ?? 'Unknown'),
-                        subtitle: Text(
-                          'Confidence: ${(result['confidenceInClass'] != null ? (result['confidenceInClass'] * 100).toStringAsFixed(2) : '0.00')}%',
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ];
-              }).toList(),
-            ],
-          )
-        : Center(
-            child: Text(
-              "No results detected",
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+    if (_resultsPerImage.isEmpty) {
+      return Center(
+        child: Text(
+          "No results detected",
+          style: TextStyle(fontSize: 14, color: Colors.grey),
+        ),
+      );
+    }
+
+    final Map<String, Map<String, dynamic>> uniqueResults = {};
+
+    String removeIdFromText(String input) {
+      List<String> parts = input.split(' ');
+
+      return parts.sublist(0, parts.length - 1).join(' ');
+
+    }
+
+
+    _resultsPerImage.forEach((imagePath, results) {
+      for (var result in results) {
+        final String productName = removeIdFromText(result['detectedClass'].toString());
+        final double confidence = (result['confidenceInClass'] as num).toDouble();
+
+        if (!uniqueResults.containsKey(productName) ||
+            confidence > (uniqueResults[productName]!['confidenceInClass'] as num)) {
+          uniqueResults[productName] = Map<String, dynamic>.from(result);
+        }
+      }
+    });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.only(top: 10, bottom: 5),
+          child: Text(
+            'Detection Results:',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+        ),
+        ...uniqueResults.values.map((result) {
+          return Card(
+            elevation: 3,
+            margin: const EdgeInsets.symmetric(vertical: 5),
+            child: ListTile(
+              title: Text(removeIdFromText(result['detectedClass'].toString()) ?? 'Unknown'),
             ),
           );
+        }).toList(),
+      ],
+    );
   }
 
   Widget _buildSaveButton() {
     return ElevatedButton(
-      onPressed: _resultsPerImage.isNotEmpty ? _saveToFirestore : null, // Tombol hanya aktif jika ada hasil deteksi
+      onPressed: _resultsPerImage.isNotEmpty ? _saveToFirestore : null,
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.white,
         padding: EdgeInsets.symmetric(vertical: 15),
@@ -337,12 +418,12 @@ class _DetectionPageState extends State<DetectionPage> {
           side: BorderSide(
             color: AppColors.primary,
             width: 2,
-          ), // Menambahkan border dengan warna dan ketebalan
+          ),
         ),
       ),
       child: Text(
         'Save Results',
-        style: TextStyle(color: _resultsPerImage.isNotEmpty ? AppColors.primary : Colors.grey), // Mengubah warna teks jika tombol dinonaktifkan
+        style: TextStyle(color: _resultsPerImage.isNotEmpty ? AppColors.primary : Colors.grey),
       ),
     );
   }

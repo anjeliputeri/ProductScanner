@@ -11,7 +11,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     await Firebase.initializeApp(
-      name: 'product-scanner-cbd65',
+      name: 'product-scanner-efbc4',
       options: DefaultFirebaseOptions.currentPlatform,
     );
     print("Koneksi ke Firebase berhasil.");

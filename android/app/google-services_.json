@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "917183802989",
-    "project_id": "productscanner-49228",
-    "storage_bucket": "productscanner-49228.firebasestorage.app"
+    "project_number": "387070558243",
+    "project_id": "product-scanner-cbd65",
+    "storage_bucket": "product-scanner-cbd65.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:917183802989:android:58894397835f32394b5964",
+        "mobilesdk_app_id": "1:387070558243:android:8f276e8006b580c9ca3196",
         "android_client_info": {
           "package_name": "com.cds.product_scanner"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAm8g6wirVMcquzH6s2ek_RAwXftiNs0Rg"
+          "current_key": "AIzaSyAVCX5jqxpZs5gQlgGgiO61fGV9ffwaQPo"
         }
       ],
       "services": {

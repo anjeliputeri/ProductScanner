@@ -1,21 +1,22 @@
 {
   "project_info": {
-    "project_number": "387070558243",
-    "project_id": "product-scanner-cbd65",
-    "storage_bucket": "product-scanner-cbd65.firebasestorage.app"
+    "project_number": "415150639670",
+    "project_id": "product-scanner-efbc4",
+    "storage_bucket": "product-scanner-efbc4.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:387070558243:android:8f276e8006b580c9ca3196",
+        "mobilesdk_app_id": "1:415150639670:android:4f863b6b6fb2d478ada697",
         "android_client_info": {
           "package_name": "com.cds.product_scanner"
         }
       },
+
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAVCX5jqxpZs5gQlgGgiO61fGV9ffwaQPo"
+          "current_key": "AIzaSyBQSQFWFvhL8vwGwJJji1wCZMGiCfZFbj8"
         }
       ],
       "services": {

@@ -17,7 +17,7 @@ class DetailPage extends StatelessWidget {
         ),
         backgroundColor: AppColors.primary,
         iconTheme: IconThemeData(
-          color: Colors.white, // Ubah warna ikon menjadi putih
+          color: Colors.white,
         ),
       ),
       body: Padding(
@@ -32,7 +32,6 @@ class DetailPage extends StatelessWidget {
                   columns: [
                     DataColumn(label: Text('No.')),
                     DataColumn(label: Text('Product Name')),
-                    DataColumn(label: Text('Availability')),
                   ],
                   rows: List.generate(items.length, (index) {
                     final item = items[index];
@@ -44,7 +43,6 @@ class DetailPage extends StatelessWidget {
                           style: TextStyle(fontSize: 14),
                         ),
                       ),
-                      DataCell(Text(item['availability'] ?? 'N/A')),
                     ]);
                   }),
                 ),

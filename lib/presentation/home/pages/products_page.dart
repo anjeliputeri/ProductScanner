@@ -1,16 +1,17 @@
-import 'package:fic12_flutter_starter/core/constants/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:fic12_flutter_starter/core/constants/colors.dart';
 
 class ProductsPage extends StatefulWidget {
   @override
-  _ProductsPageState createState() => _ProductsPageState();
+  ProductsPageState createState() => ProductsPageState();
 }
 
-class _ProductsPageState extends State<ProductsPage> {
-  // Menyimpan produk dari koleksi "products"
-  List<String> productNames = [];
+class ProductsPageState extends State<ProductsPage> {
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  List<Map<String, dynamic>> productList = [];
+  bool isLoading = true;
 
   @override
   void initState() {
@@ -18,94 +19,155 @@ class _ProductsPageState extends State<ProductsPage> {
     _fetchProducts();
   }
 
-  // Mengambil semua produk dari koleksi "products"
   Future<void> _fetchProducts() async {
     try {
-      // Ambil semua produk dari Firestore
-      QuerySnapshot productSnapshot = await FirebaseFirestore.instance.collection('products').get();
-      List<String> productList = productSnapshot.docs.map((doc) => doc['productName'] as String).toList();
+      final QuerySnapshot productSnapshot = await _firestore.collection('product').get();
 
       setState(() {
-        productNames = productList; // Simpan produk di state
+        productList = productSnapshot.docs
+            .map((doc) => {
+          'id': doc.id,
+          'productName': (doc.data() as Map<String, dynamic>)['productName'] as String? ?? 'Unknown',
+          'availability': (doc.data() as Map<String, dynamic>)['availability'] as String? ?? 'Unknown',
+        })
+            .toList();
+        isLoading = false;
       });
     } catch (e) {
       print("Error fetching products: $e");
+      setState(() {
+        isLoading = false;
+      });
     }
+  }
+
+  String _formatDate(dynamic timestamp) {
+    if (timestamp == null) return '-';
+    try {
+      if (timestamp is Timestamp) {
+        return DateFormat('dd MMM yyyy, HH:mm').format(timestamp.toDate());
+      }
+      return '-';
+    } catch (e) {
+      return '-';
+    }
+  }
+
+  List<DataRow> _getSortedDataRows(List<Map<String, dynamic>> products, List<DocumentSnapshot> historyDocs) {
+    List<Map<String, dynamic>> productsWithDates = [];
+
+    for (var product in products) {
+      String lastDetectedDate = '-';
+      DateTime? lastDetectedDateTime;
+
+      // Find the last detection date for each product
+      if (historyDocs.isNotEmpty) {
+        for (var doc in historyDocs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final List<dynamic> detectedItems = data['detectedItems'] as List<dynamic>? ?? [];
+
+          for (var item in detectedItems) {
+            if (item['productName'] == product['productName']) {
+              lastDetectedDate = _formatDate(data['timestamp']);
+              lastDetectedDateTime = (data['timestamp'] as Timestamp).toDate();
+              break;
+            }
+          }
+          if (lastDetectedDate != '-') break;
+        }
+      }
+
+      productsWithDates.add({
+        ...product,
+        'lastDetectedDate': lastDetectedDate,
+        'lastDetectedDateTime': lastDetectedDateTime,
+      });
+    }
+
+    // Sort the products
+    productsWithDates.sort((a, b) {
+      final DateTime? dateA = a['lastDetectedDateTime'];
+      final DateTime? dateB = b['lastDetectedDateTime'];
+
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+      return dateB.compareTo(dateA);
+    });
+
+    // Create DataRows from sorted data
+    return productsWithDates.asMap().entries.map((entry) {
+      int index = entry.key;
+      var product = entry.value;
+      return DataRow(
+        cells: [
+          DataCell(Text((index + 1).toString())),
+          DataCell(Text(product['lastDetectedDate'])),
+          DataCell(Text(product['productName'])),
+          DataCell(Text(product['availability'])), // Using availability from product collection
+        ],
+      );
+    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
+        title: const Text(
           'Products',
           style: TextStyle(color: Colors.white),
         ),
         backgroundColor: AppColors.primary,
-        iconTheme: IconThemeData(
+        iconTheme: const IconThemeData(
           color: Colors.white,
         ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : StreamBuilder<QuerySnapshot>(
+        stream: _firestore
             .collection('history')
-            .orderBy('timestamp', descending: true) // Mengurutkan data dari terbaru
+            .orderBy('timestamp', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator());
           }
 
           if (snapshot.hasError) {
-            return Center(child: Text('Error: ${snapshot.error}'));
+            return Center(
+                child: Text('Error loading history: ${snapshot.error}'));
           }
 
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return Center(child: Text('No history available.'));
-          }
-
-          var history = snapshot.data!.docs;
+          final List<DataRow> sortedRows = _getSortedDataRows(
+            productList,
+            snapshot.hasData ? snapshot.data!.docs : [],
+          );
 
           return SingleChildScrollView(
-            child: Column(
-              children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    columns: [
-                      DataColumn(label: Text('No.')),
-                      DataColumn(label: Text('Date')),
-                      DataColumn(label: Text('Product Name')),
-                      DataColumn(label: Text('Availability')),
-                    ],
-                    rows: history.expand((doc) {
-                      var data = doc.data() as Map<String, dynamic>;
-                      var timestamp = data['timestamp'] != null
-                          ? DateFormat('dd MMM yyyy, HH:mm').format((data['timestamp'] as Timestamp).toDate())
-                          : 'N/A';
-                      var detectedItems = data['detectedItems'] as List<dynamic>? ?? [];
-
-                      return List.generate(detectedItems.length, (index) {
-                        var item = detectedItems[index] as Map<String, dynamic>;
-                        var productName = item['productName'] ?? 'Unknown';
-                        var availability = productNames.contains(productName) ? 'Available' : 'Not Available';
-
-                        return DataRow(cells: [
-                          DataCell(Text((index + 1).toString())),
-                          DataCell(Text(timestamp)),
-                          DataCell(Text(productName)),
-                          DataCell(Text(availability)),
-                        ]);
-                      });
-                    }).toList(),
+            scrollDirection: Axis.vertical,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: DataTable(
+                  headingTextStyle: const TextStyle(
+                    fontWeight: FontWeight.bold,
                   ),
+                  columns: const [
+                    DataColumn(label: Text('No.')),
+                    DataColumn(label: Text('Last Detected')),
+                    DataColumn(label: Text('Product Name')),
+                    DataColumn(label: Text('Availability')),
+                  ],
+                  rows: sortedRows,
                 ),
-              ],
+              ),
             ),
           );
         },
       ),
-
     );
   }
 }

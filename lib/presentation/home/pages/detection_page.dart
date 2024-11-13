@@ -120,6 +120,8 @@ class _DetectionPageState extends State<DetectionPage> {
   Future<void> _saveToFirestore() async {
     try {
       final historyDoc = FirebaseFirestore.instance.collection('history').doc();
+      final productsCollection =
+          FirebaseFirestore.instance.collection('product');
       final timestamp = DateTime.now();
 
       final Map<String, Map<String, dynamic>> bestResults = {};
@@ -127,10 +129,12 @@ class _DetectionPageState extends State<DetectionPage> {
       _resultsPerImage.values.forEach((results) {
         for (var result in results) {
           final String productName = result['detectedClass'].toString();
-          final double confidence = (result['confidenceInClass'] as num).toDouble();
+          final double confidence =
+              (result['confidenceInClass'] as num).toDouble();
 
           if (!bestResults.containsKey(productName) ||
-              confidence > (bestResults[productName]!['confidence'] as double)) {
+              confidence >
+                  (bestResults[productName]!['confidence'] as double)) {
             bestResults[productName] = {
               'productName': productName,
               'confidence': confidence,
@@ -140,8 +144,35 @@ class _DetectionPageState extends State<DetectionPage> {
         }
       });
 
-      final List<Map<String, dynamic>> allDetectedItems =
-      bestResults.values.map((item) => Map<String, dynamic>.from(item)).toList();
+      for (var item in bestResults.values) {
+        final productName = item['productName'] as String;
+
+        final productQuery = await productsCollection
+            .where('productName', isEqualTo: productName)
+            .get();
+
+        if (productQuery.docs.isEmpty) {
+          print("-----product belum ada, bikin----");
+
+          await productsCollection.add({
+            'productName': productName,
+            'availability': 'Available',
+            'createdAt': timestamp,
+            'updatedAt': timestamp,
+          });
+        } else {
+          print("-----product udah ada, update----");
+          final productDoc = productQuery.docs.first;
+          await productDoc.reference.update({
+            'availability': 'Available',
+            'updatedAt': timestamp,
+          });
+        }
+      }
+
+      final List<Map<String, dynamic>> allDetectedItems = bestResults.values
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
 
       await historyDoc.set({
         'timestamp': timestamp,
@@ -167,7 +198,8 @@ class _DetectionPageState extends State<DetectionPage> {
       children: [
         Scaffold(
           appBar: AppBar(
-            title: Text('Product Detection', style: TextStyle(color: Colors.white)),
+            title: Text('Product Detection',
+                style: TextStyle(color: Colors.white)),
             backgroundColor: AppColors.primary,
             iconTheme: IconThemeData(
               color: Colors.white,
@@ -219,7 +251,8 @@ class _DetectionPageState extends State<DetectionPage> {
             ),
             shape: CircleBorder(),
           ),
-          floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+          floatingActionButtonLocation:
+              FloatingActionButtonLocation.centerFloat,
         ),
         if (_isLoading)
           Container(
@@ -265,8 +298,8 @@ class _DetectionPageState extends State<DetectionPage> {
         fillColor: Colors.white,
       ),
       value: _selectedModel,
-      items: ['model-1', 'model-2', 'model-3', 'model-4', 'model-5']
-          .map((model) {
+      items:
+          ['model-1', 'model-2', 'model-3', 'model-4', 'model-5'].map((model) {
         return DropdownMenuItem(
           value: model,
           child: Text(
@@ -290,7 +323,6 @@ class _DetectionPageState extends State<DetectionPage> {
       ),
       iconSize: 30,
     );
-
   }
 
   Widget _buildImagePreview() {
@@ -364,17 +396,18 @@ class _DetectionPageState extends State<DetectionPage> {
       List<String> parts = input.split(' ');
 
       return parts.sublist(0, parts.length - 1).join(' ');
-
     }
-
 
     _resultsPerImage.forEach((imagePath, results) {
       for (var result in results) {
-        final String productName = removeIdFromText(result['detectedClass'].toString());
-        final double confidence = (result['confidenceInClass'] as num).toDouble();
+        final String productName =
+            removeIdFromText(result['detectedClass'].toString());
+        final double confidence =
+            (result['confidenceInClass'] as num).toDouble();
 
         if (!uniqueResults.containsKey(productName) ||
-            confidence > (uniqueResults[productName]!['confidenceInClass'] as num)) {
+            confidence >
+                (uniqueResults[productName]!['confidenceInClass'] as num)) {
           uniqueResults[productName] = Map<String, dynamic>.from(result);
         }
       }
@@ -399,7 +432,9 @@ class _DetectionPageState extends State<DetectionPage> {
             elevation: 3,
             margin: const EdgeInsets.symmetric(vertical: 5),
             child: ListTile(
-              title: Text(removeIdFromText(result['detectedClass'].toString()) ?? 'Unknown'),
+              title: Text(
+                  removeIdFromText(result['detectedClass'].toString()) ??
+                      'Unknown'),
             ),
           );
         }).toList(),
@@ -423,9 +458,10 @@ class _DetectionPageState extends State<DetectionPage> {
       ),
       child: Text(
         'Save Results',
-        style: TextStyle(color: _resultsPerImage.isNotEmpty ? AppColors.primary : Colors.grey),
+        style: TextStyle(
+            color:
+                _resultsPerImage.isNotEmpty ? AppColors.primary : Colors.grey),
       ),
     );
   }
-
 }

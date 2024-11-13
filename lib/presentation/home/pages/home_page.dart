@@ -89,7 +89,10 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             children: [
               StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('history').snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('history')
+                    .orderBy('timestamp', descending: true)
+                    .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return Center(child: CircularProgressIndicator());

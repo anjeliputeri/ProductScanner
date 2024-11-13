@@ -22,7 +22,7 @@ class _DetectionPageState extends State<DetectionPage> {
   final ImagePicker _picker = ImagePicker();
   List<XFile>? _images = [];
   String? _selectedModel;
-  Map<String, List<dynamic>> _resultsPerImage = {};
+  Map<String, Map<String, List<dynamic>>> _allResultsPerModel = {};
   bool _hasDetected = false;
   bool _isLoading = false;
 
@@ -92,24 +92,33 @@ class _DetectionPageState extends State<DetectionPage> {
 
     try {
       await _loadModel(_selectedModel!);
-      _resultsPerImage.clear();
+      Map<String, List<dynamic>> resultsPerImage = {};
 
       for (var image in _images!) {
-        var recognitions = await Tflite.detectObjectOnImage(
-          path: image.path,
-          threshold: 0.5,
-          numResultsPerClass: 5,
-        );
+        // Skip detection if bounding boxes already exist
+        if (_allResultsPerModel.containsKey(_selectedModel!) &&
+            _allResultsPerModel[_selectedModel]!.containsKey(image.path)) {
+          // Results already detected for this image, skip detection
+          resultsPerImage[image.path] = _allResultsPerModel[_selectedModel!]![image.path]!;
+        } else {
+          var recognitions = await Tflite.detectObjectOnImage(
+            path: image.path,
+            threshold: 0.5,
+            numResultsPerClass: 5,
+          );
 
-        if (recognitions != null) {
-          print("-----result----");
-          print(recognitions);
-          setState(() {
-            _resultsPerImage[image.path] = recognitions;
-            _hasDetected = true;
-          });
+          if (recognitions != null) {
+            print("-----result----");
+            print(recognitions);
+            resultsPerImage[image.path] = recognitions;
+          }
         }
       }
+
+      setState(() {
+        _allResultsPerModel[_selectedModel!] = resultsPerImage;
+        _hasDetected = true;
+      });
     } finally {
       setState(() {
         _isLoading = false;
@@ -121,27 +130,31 @@ class _DetectionPageState extends State<DetectionPage> {
     try {
       final historyDoc = FirebaseFirestore.instance.collection('history').doc();
       final productsCollection =
-          FirebaseFirestore.instance.collection('product');
+      FirebaseFirestore.instance.collection('product');
       final timestamp = DateTime.now();
 
       final Map<String, Map<String, dynamic>> bestResults = {};
 
-      _resultsPerImage.values.forEach((results) {
-        for (var result in results) {
-          final String productName = result['detectedClass'].toString();
-          final double confidence =
-              (result['confidenceInClass'] as num).toDouble();
+      // Mengumpulkan hasil dari semua model
+      _allResultsPerModel.forEach((modelName, resultsPerImage) {
+        resultsPerImage.values.forEach((results) {
+          for (var result in results) {
+            final String productName = result['detectedClass'].toString();
+            final double confidence =
+            (result['confidenceInClass'] as num).toDouble();
 
-          if (!bestResults.containsKey(productName) ||
-              confidence >
-                  (bestResults[productName]!['confidence'] as double)) {
-            bestResults[productName] = {
-              'productName': productName,
-              'confidence': confidence,
-              'availability': 'Available',
-            };
+            if (!bestResults.containsKey(productName) ||
+                confidence >
+                    (bestResults[productName]!['confidence'] as double)) {
+              bestResults[productName] = {
+                'productName': productName,
+                'confidence': confidence,
+                'availability': 'Available',
+                'model': modelName,  // Tambahkan informasi model
+              };
+            }
           }
-        }
+        });
       });
 
       for (var item in bestResults.values) {
@@ -212,7 +225,7 @@ class _DetectionPageState extends State<DetectionPage> {
                   onPressed: () {
                     setState(() {
                       _images = [XFile(widget.imageFile.path)];
-                      _resultsPerImage.clear();
+                      _allResultsPerModel.clear();
                       _hasDetected = false;
                       _selectedModel = null;
                     });
@@ -252,7 +265,7 @@ class _DetectionPageState extends State<DetectionPage> {
             shape: CircleBorder(),
           ),
           floatingActionButtonLocation:
-              FloatingActionButtonLocation.centerFloat,
+          FloatingActionButtonLocation.centerFloat,
         ),
         if (_isLoading)
           Container(
@@ -299,7 +312,7 @@ class _DetectionPageState extends State<DetectionPage> {
       ),
       value: _selectedModel,
       items:
-          ['model-1', 'model-2', 'model-3', 'model-4', 'model-5'].map((model) {
+      ['model-1', 'model-2', 'model-3', 'model-4', 'model-5'].map((model) {
         return DropdownMenuItem(
           value: model,
           child: Text(
@@ -328,38 +341,46 @@ class _DetectionPageState extends State<DetectionPage> {
   Widget _buildImagePreview() {
     return _images!.isNotEmpty
         ? Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.6,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.6,
+      ),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: _images!.length,
+        itemBuilder: (context, index) {
+          final imagePath = _images![index].path;
+          final currentResults = _selectedModel != null &&
+              _allResultsPerModel.containsKey(_selectedModel)
+              ? _allResultsPerModel[_selectedModel]![imagePath] ?? []
+              : [];
+
+          // Add print statement to debug the results
+          print('currentResults: $currentResults');
+
+          return Padding(
+            padding: const EdgeInsets.only(right: 10.0),
+            child: Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: ImageWithBoundingBoxes(
+                  imageFile: File(imagePath),
+                  results: currentResults,  // Ensure currentResults is a valid list
+                ),
+              ),
             ),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _images!.length,
-              itemBuilder: (context, index) {
-                final imagePath = _images![index].path;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 10.0),
-                  child: Card(
-                    elevation: 4,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: ImageWithBoundingBoxes(
-                        imageFile: File(imagePath),
-                        results: _resultsPerImage[imagePath] ?? [],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          )
+          );
+        },
+      ),
+    )
         : Center(child: Text("No images selected"));
   }
 
   Widget _buildDetectButton() {
-    bool isEnabled = _selectedModel != null && !_hasDetected;
+    bool isEnabled = _selectedModel != null;
 
     return ElevatedButton(
       onPressed: isEnabled ? _detectProducts : null,
@@ -381,7 +402,7 @@ class _DetectionPageState extends State<DetectionPage> {
   }
 
   Widget _buildDetectionResults() {
-    if (_resultsPerImage.isEmpty) {
+    if (_allResultsPerModel.isEmpty) {
       return Center(
         child: Text(
           "No results detected",
@@ -390,52 +411,86 @@ class _DetectionPageState extends State<DetectionPage> {
       );
     }
 
-    final Map<String, Map<String, dynamic>> uniqueResults = {};
-
-    String removeIdFromText(String input) {
-      List<String> parts = input.split(' ');
-
-      return parts.sublist(0, parts.length - 1).join(' ');
-    }
-
-    _resultsPerImage.forEach((imagePath, results) {
-      for (var result in results) {
-        final String productName =
-            removeIdFromText(result['detectedClass'].toString());
-        final double confidence =
-            (result['confidenceInClass'] as num).toDouble();
-
-        if (!uniqueResults.containsKey(productName) ||
-            confidence >
-                (uniqueResults[productName]!['confidenceInClass'] as num)) {
-          uniqueResults[productName] = Map<String, dynamic>.from(result);
-        }
-      }
-    });
+    bool hasValidResults = false;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 10),
-        Padding(
-          padding: const EdgeInsets.only(top: 10, bottom: 5),
-          child: Text(
-            'Detection Results:',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            ),
-          ),
-        ),
-        ...uniqueResults.values.map((result) {
-          return Card(
-            elevation: 3,
-            margin: const EdgeInsets.symmetric(vertical: 5),
-            child: ListTile(
-              title: Text(
-                  removeIdFromText(result['detectedClass'].toString()) ??
-                      'Unknown'),
-            ),
+        ..._allResultsPerModel.entries.map((modelEntry) {
+          final modelName = modelEntry.key;
+          final resultsPerImage = modelEntry.value;
+
+          final Map<String, Map<String, dynamic>> uniqueResults = {};
+
+          resultsPerImage.forEach((imagePath, results) {
+            for (var result in results) {
+              final String productName = removeIdFromText(result['detectedClass'].toString());
+              final double confidence = (result['confidenceInClass'] as num).toDouble();
+
+              if (productName.isNotEmpty && !uniqueResults.containsKey(productName) ||
+                  confidence > (uniqueResults[productName]!['confidenceInClass'] as num)) {
+                uniqueResults[productName] = Map<String, dynamic>.from(result);
+                hasValidResults = true; // Mark that valid results exist
+              }
+            }
+          });
+
+          // If there are no valid results for this model, show a fallback message
+          if (!hasValidResults) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 10, bottom: 5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'No valid product detected for $modelName.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 5),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Detection results for $modelName:',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              ...uniqueResults.values.map((result) {
+                return Card(
+                  elevation: 3,
+                  margin: const EdgeInsets.symmetric(vertical: 5),
+                  child: ListTile(
+                    title: Text(
+                      removeIdFromText(result['detectedClass'].toString()) ?? 'Unknown',
+                    ),
+                  ),
+                );
+              }).toList(),
+              Divider(),
+            ],
           );
         }).toList(),
       ],
@@ -444,7 +499,7 @@ class _DetectionPageState extends State<DetectionPage> {
 
   Widget _buildSaveButton() {
     return ElevatedButton(
-      onPressed: _resultsPerImage.isNotEmpty ? _saveToFirestore : null,
+      onPressed: _allResultsPerModel.isNotEmpty ? _saveToFirestore : null,
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.white,
         padding: EdgeInsets.symmetric(vertical: 15),
@@ -460,8 +515,13 @@ class _DetectionPageState extends State<DetectionPage> {
         'Save Results',
         style: TextStyle(
             color:
-                _resultsPerImage.isNotEmpty ? AppColors.primary : Colors.grey),
+            _allResultsPerModel.isNotEmpty ? AppColors.primary : Colors.grey),
       ),
     );
+  }
+
+  String removeIdFromText(String input) {
+    List<String> parts = input.split(' ');
+    return parts.sublist(0, parts.length - 1).join(' ');
   }
 }

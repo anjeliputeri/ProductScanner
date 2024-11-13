@@ -70,7 +70,7 @@ class ImageWithBoundingBoxes extends StatelessWidget {
                   final rect = result['rect'];
                   if (rect == null) return const SizedBox(); // Skip jika tidak ada rect
 
-                  // Hitung koordinat dengan skala yang benar
+                  // Hitung koordinat dengan skala yang benarz
                   final x = rect['x'] * imageWidth * scaleFactor;
                   final y = rect['y'] * imageHeight * scaleFactor;
                   final width = rect['w'] * imageWidth * scaleFactor;

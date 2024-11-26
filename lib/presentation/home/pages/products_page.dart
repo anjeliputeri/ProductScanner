@@ -53,6 +53,12 @@ class ProductsPageState extends State<ProductsPage> {
     }
   }
 
+
+  String removeIdFromText(String input) {
+    List<String> parts = input.split(' ');
+    return parts.sublist(0, parts.length - 1).join(' ');
+  }
+
   List<DataRow> _getSortedDataRows(List<Map<String, dynamic>> products, List<DocumentSnapshot> historyDocs) {
     List<Map<String, dynamic>> productsWithDates = [];
 
@@ -60,7 +66,6 @@ class ProductsPageState extends State<ProductsPage> {
       String lastDetectedDate = '-';
       DateTime? lastDetectedDateTime;
 
-      // Find the last detection date for each product
       if (historyDocs.isNotEmpty) {
         for (var doc in historyDocs) {
           final data = doc.data() as Map<String, dynamic>;
@@ -77,6 +82,8 @@ class ProductsPageState extends State<ProductsPage> {
         }
       }
 
+      
+
       productsWithDates.add({
         ...product,
         'lastDetectedDate': lastDetectedDate,
@@ -84,7 +91,6 @@ class ProductsPageState extends State<ProductsPage> {
       });
     }
 
-    // Sort the products
     productsWithDates.sort((a, b) {
       final DateTime? dateA = a['lastDetectedDateTime'];
       final DateTime? dateB = b['lastDetectedDateTime'];
@@ -95,16 +101,29 @@ class ProductsPageState extends State<ProductsPage> {
       return dateB.compareTo(dateA);
     });
 
-    // Create DataRows from sorted data
     return productsWithDates.asMap().entries.map((entry) {
       int index = entry.key;
       var product = entry.value;
       return DataRow(
         cells: [
           DataCell(Text((index + 1).toString())),
-          DataCell(Text(product['lastDetectedDate'])),
-          DataCell(Text(product['productName'])),
-          DataCell(Text(product['availability'])), // Using availability from product collection
+          // DataCell(Text(product['lastDetectedDate'])),
+          DataCell(
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: 250),
+              child: Text(
+                removeIdFromText(product['productName']),
+                style: TextStyle(height: 1.5),
+                softWrap: true,
+                overflow: TextOverflow.clip,
+              ),
+            ),
+          ),
+          DataCell(
+            product['availability'] == 'Available'
+                ? Icon(Icons.check_circle, color: Colors.green, size: 24)
+                : Icon(Icons.cancel, color: Colors.red, size: 24),
+          ),
         ],
       );
     }).toList();
@@ -157,7 +176,7 @@ class ProductsPageState extends State<ProductsPage> {
                   ),
                   columns: const [
                     DataColumn(label: Text('No.')),
-                    DataColumn(label: Text('Last Detected')),
+                    // DataColumn(label: Text('Last Detected')),
                     DataColumn(label: Text('Product Name')),
                     DataColumn(label: Text('Availability')),
                   ],

@@ -2,32 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 
-class ImagesWithBoundingBoxes extends StatelessWidget {
-  final List<File> imageFiles;
-  final Map<String, List<dynamic>> resultsPerImage;
-
-  const ImagesWithBoundingBoxes({
-    Key? key,
-    required this.imageFiles,
-    required this.resultsPerImage,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView.builder(
-      itemCount: imageFiles.length,
-      itemBuilder: (context, index) {
-        final currentImage = imageFiles[index];
-        return ImageWithBoundingBoxes(
-          imageFile: currentImage,
-          // Mengambil hasil deteksi yang sesuai dengan path gambar
-          results: resultsPerImage[currentImage.path] ?? [],
-        );
-      },
-    );
-  }
-}
-
 class ImageWithBoundingBoxes extends StatelessWidget {
   final File imageFile;
   final List<dynamic> results;
@@ -51,38 +25,31 @@ class ImageWithBoundingBoxes extends StatelessWidget {
         final imageWidth = imageSize.width;
         final imageHeight = imageSize.height;
 
-        // Dapatkan ukuran layar dan hitung faktor skala
         final screenWidth = MediaQuery.of(context).size.width;
         final scaleFactor = screenWidth / imageWidth;
 
         return Container(
           margin: const EdgeInsets.symmetric(vertical: 10),
           child: Stack(
-            clipBehavior: Clip.none, // Mencegah pemotongan bounding box
+            clipBehavior: Clip.none,
             children: [
               Image.file(
                 imageFile,
                 width: screenWidth,
                 fit: BoxFit.fitWidth,
               ),
-              if (results.isNotEmpty) // Hanya tampilkan bounding box jika ada hasil
+              if (results.isNotEmpty)
                 ...results.map((result) {
                   final rect = result['rect'];
-                  if (rect == null) return const SizedBox(); // Skip jika tidak ada rect
+                  if (rect == null) return const SizedBox();
 
-                  // Hitung koordinat dengan skala yang benarz
                   final x = rect['x'] * imageWidth * scaleFactor;
                   final y = rect['y'] * imageHeight * scaleFactor;
                   final width = rect['w'] * imageWidth * scaleFactor;
                   final height = rect['h'] * imageHeight * scaleFactor;
 
-                  final confidence = (result['confidenceInClass'] ?? 0.0) * 100;
-                  final label = result['detectedClass'] ?? 'Unknown';
-
-                  // Tentukan apakah label harus dipotong
-                  final displayLabel = label.length > 6 
-                      ? '${label.substring(0, 6)}...' 
-                      : label;
+                  final productIndex = result['productIndex'];
+                  final productColor = result['productColor'];
 
                   return Positioned(
                     left: x,
@@ -92,28 +59,27 @@ class ImageWithBoundingBoxes extends StatelessWidget {
                       height: height,
                       decoration: BoxDecoration(
                         border: Border.all(
-                          color: Colors.red,
+                          color: productColor,
                           width: 2,
                         ),
                       ),
                       child: Stack(
                         children: [
-                          // Label container
                           Positioned(
                             top: 0,
                             left: 0,
                             child: Container(
-                              color: Colors.red.withOpacity(0.7),
+                              color: productColor.withOpacity(0.7),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 4,
                                 vertical: 2,
                               ),
                               child: Text(
-                                '$displayLabel: ${confidence.toStringAsFixed(1)}%',
+                                '$productIndex',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
-                                  fontSize: 10,
+                                  fontSize: 12,
                                 ),
                               ),
                             ),
@@ -141,12 +107,38 @@ class ImageWithBoundingBoxes extends StatelessWidget {
         info.image.height.toDouble(),
       );
       completer.complete(size);
-      image.evict(); // Bersihkan cache gambar
+      image.evict();
     });
 
     final stream = image.resolve(const ImageConfiguration());
     stream.addListener(listener);
     
     return completer.future;
+  }
+}
+
+// Optional: If you need to handle multiple images
+class ImagesWithBoundingBoxes extends StatelessWidget {
+  final List<File> imageFiles;
+  final Map<String, List<dynamic>> resultsPerImage;
+
+  const ImagesWithBoundingBoxes({
+    Key? key,
+    required this.imageFiles,
+    required this.resultsPerImage,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      itemCount: imageFiles.length,
+      itemBuilder: (context, index) {
+        final currentImage = imageFiles[index];
+        return ImageWithBoundingBoxes(
+          imageFile: currentImage,
+          results: resultsPerImage[currentImage.path] ?? [],
+        );
+      },
+    );
   }
 }
